@@ -1,0 +1,4 @@
+nilearn>=0.11
+numpy>=1.26
+plotly>=5.24
+streamlit>=1.40

@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body, #plot {
+        width: 100%;
+        height: 100%;
+        min-height: 680px;
+        margin: 0;
+        overflow: hidden;
+        background: #10151d;
+      }
+      #status {
+        position: absolute;
+        z-index: 1;
+        top: 12px;
+        left: 16px;
+        color: #9ca8b8;
+        font: 13px system-ui, sans-serif;
+        pointer-events: none;
+      }
+    </style>
+    <script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script>
+  </head>
+  <body>
+    <div id="status">Loading 3D brain…</div>
+    <div id="plot"></div>
+    <script>
+      const plot = document.getElementById("plot");
+      const status = document.getElementById("status");
+      let lastClick = null;
+      let clickTimer = null;
+      let animationFrame = null;
+      let animationStart = performance.now();
+      let pendingRegion = null;
+
+      function send(type, extra = {}) {
+        window.parent.postMessage(
+          { isStreamlitMessage: true, type, ...extra },
+          "*"
+        );
+      }
+
+      function animateSignals(figure, args) {
+        if (animationFrame) {
+          cancelAnimationFrame(animationFrame);
+          animationFrame = null;
+        }
+        const traceIndex = figure.data.findIndex(
+          (trace) => trace.meta && trace.meta.role === "action-potential-nodes"
+        );
+        const transmitterIndex = figure.data.findIndex(
+          (trace) => trace.meta && trace.meta.role === "transmitter-particles"
+        );
+        const epspIndex = figure.data.findIndex(
+          (trace) => trace.meta && trace.meta.role === "postsynaptic-epsp"
+        );
+        if (!args.animate || traceIndex < 0 || !args.spiking) {
+          if (args.animate && !args.spiking) {
+            status.textContent =
+              "Subthreshold stimulus · no action potential to propagate";
+          }
+          return;
+        }
+        const paths = figure.data[traceIndex].meta.paths;
+        const periodMs = 1000 / args.firingRate;
+        const times = args.voltageTime;
+        const voltage = args.voltage;
+        const latency = args.apLatency;
+        let lastFrame = 0;
+        animationStart = performance.now();
+
+        function sampleVoltage(timeMs) {
+          const index = Math.max(
+            0,
+            Math.min(Math.floor(timeMs / 0.01), voltage.length - 2)
+          );
+          const fraction = Math.max(0, Math.min(timeMs / 0.01 - index, 1));
+          return voltage[index] * (1 - fraction) + voltage[index + 1] * fraction;
+        }
+
+        const tick = (now) => {
+          if (now - lastFrame < 24) {
+            animationFrame = requestAnimationFrame(tick);
+            return;
+          }
+          lastFrame = now;
+          const simulatedTime =
+            (((now - animationStart) * 0.05 * args.speed) % periodMs + periodMs) %
+            periodMs;
+          const actionPoints = [];
+          const actionVoltages = [];
+          const transmitterPoints = [];
+          const epspPoints = [];
+          const epspSizes = [];
+
+          for (const path of paths) {
+            if (path.startTimeMs === null) continue;
+            const elapsed =
+              (simulatedTime - path.startTimeMs + periodMs) % periodMs;
+            if (elapsed >= 0 && elapsed <= path.conductionMs) {
+              const waveProgress = elapsed / path.conductionMs;
+              const nodeIndex = Math.min(
+                path.nodes.length - 1,
+                Math.round(waveProgress * (path.nodes.length - 1))
+              );
+              const waveVoltage = sampleVoltage(
+                latency + Math.min(1.5, waveProgress * 1.5)
+              );
+              actionPoints.push(path.nodes[nodeIndex]);
+              actionVoltages.push(waveVoltage);
+            }
+            for (let nodeIndex = 0; nodeIndex < path.nodes.length; nodeIndex++) {
+              const localTime =
+                latency +
+                elapsed -
+                (path.conductionMs * nodeIndex) / (path.nodes.length - 1);
+              if (localTime < latency || localTime > times[times.length - 1]) {
+                continue;
+              }
+              const membraneVoltage = sampleVoltage(localTime);
+              if (membraneVoltage > 0) {
+                actionPoints.push(path.nodes[nodeIndex]);
+                actionVoltages.push(membraneVoltage);
+              }
+            }
+
+            const terminalTime = path.conductionMs;
+            const transmitterProgress =
+              (elapsed - terminalTime) / path.synapticDelayMs;
+            if (transmitterProgress >= 0 && transmitterProgress < 1) {
+              for (let molecule = 0; molecule < 4; molecule++) {
+                const progress =
+                  Math.min(
+                    1,
+                    Math.max(
+                      0,
+                      transmitterProgress + (molecule - 1.5) * 0.12
+                    )
+                  );
+                transmitterPoints.push([
+                  path.terminal[0] +
+                    (path.target[0] - path.terminal[0]) * progress,
+                  path.terminal[1] +
+                    (path.target[1] - path.terminal[1]) * progress,
+                  path.terminal[2] +
+                    (path.target[2] - path.terminal[2]) * progress,
+                ]);
+              }
+            }
+
+            const epspElapsed =
+              elapsed - terminalTime - path.synapticDelayMs;
+            if (epspElapsed >= 0 && epspElapsed <= 8) {
+              const decay = Math.exp(-epspElapsed / 4);
+              epspPoints.push(path.target);
+              epspSizes.push(5 + args.inputAmplitude * decay * 0.8);
+            }
+          }
+
+          const updates = [
+            { points: actionPoints, sizes: actionVoltages.map((v) => 7 + v / 8),
+              colors: actionVoltages.map((v) => v > 25 ? "#fff3c4" : "#ffd166"),
+              values: actionVoltages },
+            { points: transmitterPoints, sizes: transmitterPoints.map(() => 5),
+              colors: transmitterPoints.map(() => "#ffcb69"), values: [] },
+            { points: epspPoints, sizes: epspSizes,
+              colors: epspSizes.map(() => "#71d7cf"), values: [] },
+          ];
+          status.textContent =
+            `Action potentials · ${args.firingRate} Hz · ` +
+            `${args.relay ? "postsynaptic relay" : "subthreshold EPSP"} · ` +
+            `${actionPoints.length} active nodes`;
+          const indices = [traceIndex, transmitterIndex, epspIndex];
+          const update = {
+            x: updates.map((item) => item.points.map((point) => point[0])),
+            y: updates.map((item) => item.points.map((point) => point[1])),
+            z: updates.map((item) => item.points.map((point) => point[2])),
+            "marker.size": updates.map((item) => item.sizes),
+            "marker.color": updates.map((item) => item.colors),
+            customdata: updates.map((item) => item.values),
+          };
+          Plotly.restyle(plot, update, indices)
+            .then(() => {
+              animationFrame = requestAnimationFrame(tick);
+            })
+            .catch((error) => {
+              status.textContent = "The neural signal animation stopped unexpectedly.";
+              console.error(error);
+            });
+        };
+        animationFrame = requestAnimationFrame(tick);
+      }
+
+      function onPlotClick(event) {
+        const point = event.points && event.points[0];
+        if (!point || !point.data.meta ||
+            point.data.meta.role !== "brain-region-markers") {
+          lastClick = null;
+          if (clickTimer) window.clearTimeout(clickTimer);
+          clickTimer = null;
+          return;
+        }
+        const region = point.customdata;
+        const now = performance.now();
+        if (lastClick && lastClick.region === region &&
+            now - lastClick.time < 450) {
+          if (clickTimer) window.clearTimeout(clickTimer);
+          clickTimer = null;
+          pendingRegion = region;
+          send("streamlit:setComponentValue", {
+            dataType: "json",
+            value: { region, activatedAt: Date.now() },
+          });
+          lastClick = null;
+        } else {
+          lastClick = { region, time: now };
+          if (clickTimer) window.clearTimeout(clickTimer);
+          clickTimer = window.setTimeout(() => {
+            if (lastClick && lastClick.region === region) {
+              pendingRegion = region;
+              send("streamlit:setComponentValue", {
+                dataType: "json",
+                value: { region, activatedAt: Date.now() },
+              });
+              lastClick = null;
+              clickTimer = null;
+            }
+          }, 460);
+        }
+      }
+
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "streamlit:render") return;
+        const args = event.data.args;
+        if (!window.Plotly) {
+          status.textContent = "Could not load the 3D plotting library. Check your internet connection.";
+          return;
+        }
+        let figure;
+        try {
+          figure = JSON.parse(args.figure);
+        } catch (error) {
+          status.textContent = "Could not read the 3D brain model.";
+          console.error(error);
+          return;
+        }
+        if (pendingRegion && args.selectedRegion === pendingRegion) {
+          pendingRegion = null;
+          send("streamlit:setComponentValue", {
+            dataType: "json",
+            value: null,
+          });
+        }
+        const config = {
+          responsive: true,
+          displaylogo: false,
+          scrollZoom: true,
+          doubleClick: false,
+          modeBarButtonsToRemove: ["lasso3d", "select3d"],
+        };
+        Plotly.react(plot, figure.data, figure.layout, config)
+          .then(() => {
+            status.textContent = args.animate
+              ? args.spiking
+                ? `Hodgkin–Huxley action potentials · ${args.firingRate} Hz · ${args.relay ? "postsynaptic relay" : "subthreshold EPSP"}`
+                : "Subthreshold stimulus · no action potential to propagate"
+              : figure.data.some((trace) =>
+                  trace.meta && trace.meta.role === "brain-region-markers"
+                )
+                ? "Click or double-click a labeled dot to inspect that region"
+                : "Drag to rotate · scroll to zoom";
+            if (!plot.dataset.handlersAttached) {
+              plot.on("plotly_click", onPlotClick);
+              plot.dataset.handlersAttached = "true";
+            }
+            animateSignals(figure, args);
+            send("streamlit:setFrameHeight", { height: 740 });
+          })
+          .catch((error) => {
+            status.textContent = "The 3D brain model could not be displayed.";
+            console.error(error);
+          });
+      });
+
+      send("streamlit:componentReady", { apiVersion: 1 });
+      send("streamlit:setFrameHeight", { height: 740 });
+    </script>
+  </body>
+</html>
