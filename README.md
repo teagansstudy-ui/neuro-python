@@ -1,5 +1,6 @@
 # Neuro Explorer
-
+**Live Demo:**https://neuro-explorer.streamlit.app/
+NOTE- EDUCATIONAL USE ONLY. NOT MEDICAL ADVICE.
 An interactive 3D brain explorer with three views:
 
 - **Surface** — rotate and zoom a folded cortical surface with gyri and sulci.
@@ -24,25 +25,7 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-## Publish it as a website
 
-The project is prepared for Streamlit Community Cloud. First, publish the app files
-(`app.py`, `brain_view/`, and `requirements.txt`, along with the updated README) to
-the public GitHub repository. From PowerShell in this project folder, run:
-
-```powershell
-git add app.py brain_view requirements.txt README.md
-git commit -m "Prepare Neuro Explorer for Streamlit Cloud"
-git push origin main
-```
-
-Then:
-
-1. Sign in at [share.streamlit.io](https://share.streamlit.io/) with GitHub.
-2. Select **Create app** and choose `teagansstudy-ui/neuro-python`, branch `main`,
-   and main file path `app.py`.
-3. Select **Deploy**. Streamlit will install the packages from `requirements.txt`
-   and provide a shareable `streamlit.app` URL when the first startup completes.
 
 The first startup downloads and caches the Nilearn surface dataset, so it may take
 longer than later visits. The browser also needs internet access to load Plotly.js.
