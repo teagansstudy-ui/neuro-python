@@ -1076,5 +1076,25 @@ def main() -> None:
         )
 
 
+def render_footer():
+    st.sidebar.divider()
+    st.sidebar.caption(
+        "Educational use only. Not medical advice, and not a diagnosis tool."
+    )
+    st.sidebar.markdown(
+        """
+**Sources**
+- Cortical surface: fsaverage template (FreeSurfer), loaded with nilearn
+- Neuron model: Hodgkin & Huxley (1952), *J Physiol* 117:500-544
+- Built with Streamlit, nilearn and Plotly
+
+**Made by Teagan**
+Feedback welcome: add your email or LinkedIn here
+"""
+    )
+
+
 if __name__ == "__main__":
     main()
+    render_footer()
+    
