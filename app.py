@@ -1079,7 +1079,7 @@ def main() -> None:
 def render_footer():
     st.sidebar.divider()
     st.sidebar.caption(
-        "Educational use only. Not medical advice, and not a diagnosis tool."
+       "Educational use only. Not medical advice, and not a diagnosis tool."
     )
     st.sidebar.markdown(
         """
