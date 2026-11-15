@@ -1,6 +1,10 @@
 # Neuro Explorer
 **Live Demo:**https://neuro-explorer.streamlit.app/
+
+<img width="1535" height="627" alt="image" src="https://github.com/user-attachments/assets/e1fdd33b-ed87-479b-b987-5a4b0a6b653c" />
+
 NOTE- EDUCATIONAL USE ONLY. NOT MEDICAL ADVICE.
+
 An interactive 3D brain explorer with three views:
 
 - **Surface** — rotate and zoom a folded cortical surface with gyri and sulci.
@@ -8,6 +12,11 @@ An interactive 3D brain explorer with three views:
 - **Neural signals** — stimulate a Hodgkin–Huxley neuron with a current pulse, follow action potentials along myelinated axons, and observe glutamate release and a graded postsynaptic response. Adjust the stimulus rate and excitatory input to see whether downstream neurons reach the relay threshold.
 
 Neural signal animation is slowed 20× for visibility at the default playback speed.
+
+<img width="1474" height="670" alt="image" src="https://github.com/user-attachments/assets/60c6ba72-8aef-46cd-8ced-c684642f8dae" />
+<img width="1511" height="659" alt="image" src="https://github.com/user-attachments/assets/a0222d8e-6ca7-4c5a-819d-7a50027cf721" />
+<img width="1521" height="383" alt="image" src="https://github.com/user-attachments/assets/fae4702c-a449-49e5-afbd-69d186e8040a" />
+
 
 The cortical geometry and sulcal-depth shading use the fsaverage5 surface distributed by
 Nilearn. The deep structures and spinal cord are simplified educational shapes. The neural
