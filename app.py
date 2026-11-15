@@ -1091,6 +1091,7 @@ def render_footer():
 **Made by Teagan🤘🏼**
 
 Feedback: [LinkedIn](https://www.linkedin.com/in/teagan-sharma-a8ba77399) · [GitHub Issues](https://github.com/teagansstudy-ui/neuro-python/issues)
+        """
     )
 
 
