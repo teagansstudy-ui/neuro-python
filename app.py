@@ -877,6 +877,7 @@ def build_figure(
     simulation: dict[str, object] | None = None,
     stimulus_rate_hz: float = 4,
     excitatory_input_mv: float = 12,
+    view_revision: int = 0,
 ) -> go.Figure:
     all_coords = np.concatenate([hemisphere[0] for hemisphere in surfaces])
     lower = np.percentile(all_coords, 1, axis=0)
@@ -891,7 +892,7 @@ def build_figure(
         if mode == "Full anatomy" and selected_region
         else 0.36
         if mode == "Full anatomy"
-        else 0.13
+        else 0
     )
 
     for coords, faces, sulc in surfaces:
@@ -925,10 +926,10 @@ def build_figure(
             )
         )
 
-    if mode != "Surface":
+    if mode == "Full anatomy":
         _add_full_anatomy(
             fig,
-            selected_region if mode == "Full anatomy" else None,
+            selected_region,
         )
     if mode == "Full anatomy":
         _add_region_markers(fig, selected_region)
@@ -942,9 +943,18 @@ def build_figure(
             excitatory_input_mv,
         )
 
-    all_x = [lower[0] - 8, upper[0] + 8]
-    all_y = [lower[1] - 12, upper[1] + 12]
-    all_z = [-96, upper[2] + 8]
+    if mode == "Neural signals":
+        scene_ranges = {
+            "x": [-48, 48],
+            "y": [-54, 44],
+            "z": [12, 46],
+        }
+    else:
+        scene_ranges = {
+            "x": [lower[0] - 8, upper[0] + 8],
+            "y": [lower[1] - 12, upper[1] + 12],
+            "z": [-96, upper[2] + 8],
+        }
     fig.update_layout(
         paper_bgcolor=BACKGROUND,
         plot_bgcolor=BACKGROUND,
@@ -953,16 +963,19 @@ def build_figure(
         clickmode="event",
         scene={
             "bgcolor": BACKGROUND,
-            "xaxis": {"visible": False, "range": all_x},
-            "yaxis": {"visible": False, "range": all_y},
-            "zaxis": {"visible": False, "range": all_z},
+            "xaxis": {"visible": False, "range": scene_ranges["x"]},
+            "yaxis": {"visible": False, "range": scene_ranges["y"]},
+            "zaxis": {"visible": False, "range": scene_ranges["z"]},
             "aspectmode": "data",
+            "dragmode": "orbit",
             "camera": {
                 "eye": {"x": 1.7, "y": 1.45, "z": 1.05},
                 "up": {"x": 0, "y": 0, "z": 1},
             },
         },
-        uirevision=mode,
+        uirevision=(
+            f"{mode}-{view_revision}" if mode == "Neural signals" else mode
+        ),
     )
     return fig
 
@@ -1015,6 +1028,12 @@ def _show_region_details(region: dict) -> None:
 def _reset_anatomy_view() -> None:
     st.session_state["selected_brain_region"] = None
     st.session_state["region_picker"] = "Choose a region…"
+
+
+def _reset_neural_view() -> None:
+    st.session_state["neural_view_revision"] = (
+        st.session_state.get("neural_view_revision", 0) + 1
+    )
 
 
 def main() -> None:
@@ -1088,6 +1107,16 @@ def main() -> None:
                 "along myelinated axons, through glutamate synapses, and into "
                 "postsynaptic neurons."
             )
+            st.write(
+                "Drag the model to rotate; scroll or pinch to zoom. Use the "
+                "3D toolbar for pan and zoom, or reset the framing below."
+            )
+            st.button(
+                "Reset transmission view",
+                key="reset_neural_view",
+                use_container_width=True,
+                on_click=_reset_neural_view,
+            )
             stimulus_current = st.slider(
                 "Injected current (µA/cm²)",
                 min_value=0.0,
@@ -1147,6 +1176,7 @@ def main() -> None:
         simulation,
         stimulus_rate_hz if mode == "Neural signals" else 4,
         excitatory_input_mv if mode == "Neural signals" else 12,
+        st.session_state.get("neural_view_revision", 0),
     )
     is_spiking = bool(simulation and simulation["spiked"])
     result = brain_view(
