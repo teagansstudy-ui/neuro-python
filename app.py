@@ -878,6 +878,7 @@ def build_figure(
     stimulus_rate_hz: float = 4,
     excitatory_input_mv: float = 12,
     view_revision: int = 0,
+    neural_zoomed: bool = False,
 ) -> go.Figure:
     all_coords = np.concatenate([hemisphere[0] for hemisphere in surfaces])
     lower = np.percentile(all_coords, 1, axis=0)
@@ -893,6 +894,8 @@ def build_figure(
         else 0.36
         if mode == "Full anatomy"
         else 0
+        if neural_zoomed
+        else 0.13
     )
 
     for coords, faces, sulc in surfaces:
@@ -926,10 +929,12 @@ def build_figure(
             )
         )
 
-    if mode == "Full anatomy":
+    if mode == "Full anatomy" or (
+        mode == "Neural signals" and not neural_zoomed
+    ):
         _add_full_anatomy(
             fig,
-            selected_region,
+            selected_region if mode == "Full anatomy" else None,
         )
     if mode == "Full anatomy":
         _add_region_markers(fig, selected_region)
@@ -943,7 +948,7 @@ def build_figure(
             excitatory_input_mv,
         )
 
-    if mode == "Neural signals":
+    if mode == "Neural signals" and neural_zoomed:
         scene_ranges = {
             "x": [-48, 48],
             "y": [-54, 44],
@@ -1030,7 +1035,10 @@ def _reset_anatomy_view() -> None:
     st.session_state["region_picker"] = "Choose a region…"
 
 
-def _reset_neural_view() -> None:
+def _toggle_neural_zoom() -> None:
+    st.session_state["neural_zoomed"] = not st.session_state.get(
+        "neural_zoomed", False
+    )
     st.session_state["neural_view_revision"] = (
         st.session_state.get("neural_view_revision", 0) + 1
     )
@@ -1108,14 +1116,15 @@ def main() -> None:
                 "postsynaptic neurons."
             )
             st.write(
-                "Drag the model to rotate; scroll or pinch to zoom. Use the "
-                "3D toolbar for pan and zoom, or reset the framing below."
+                "Drag to rotate, scroll or pinch to zoom, or use the 3D toolbar "
+                "to pan and zoom."
             )
+            neural_zoomed = st.session_state.get("neural_zoomed", False)
             st.button(
-                "Reset transmission view",
-                key="reset_neural_view",
+                "Show signals in full brain" if neural_zoomed else "Zoom into transmission",
+                key="toggle_neural_zoom",
                 use_container_width=True,
-                on_click=_reset_neural_view,
+                on_click=_toggle_neural_zoom,
             )
             stimulus_current = st.slider(
                 "Injected current (µA/cm²)",
@@ -1177,6 +1186,7 @@ def main() -> None:
         stimulus_rate_hz if mode == "Neural signals" else 4,
         excitatory_input_mv if mode == "Neural signals" else 12,
         st.session_state.get("neural_view_revision", 0),
+        st.session_state.get("neural_zoomed", False),
     )
     is_spiking = bool(simulation and simulation["spiked"])
     result = brain_view(

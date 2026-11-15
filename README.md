@@ -11,7 +11,7 @@ An interactive 3D brain explorer with three views:
 - **Full anatomy** — inspect labeled brain regions, including deep structures, the cerebellum, medulla, and spinal cord. Click or double-click a region marker (or choose it from the list) to focus and highlight it while retaining its role and condition details. Use **Reset view** to return to the complete anatomy.
 - **Neural signals** — stimulate a Hodgkin–Huxley neuron with a current pulse, follow action potentials along myelinated axons, and observe glutamate release and a graded postsynaptic response. Adjust the stimulus rate and excitatory input to see whether downstream neurons reach the relay threshold.
 
-In the neural view, drag the 3D network to rotate it, scroll or pinch to zoom, or use the Plotly toolbar to pan and zoom. **Reset transmission view** restores the close-up framing around the neuron bundle.
+The neural view starts with the transmission network shown in the context of the full brain. Choose **Zoom into transmission** to focus on the neuron bundle; choose **Show signals in full brain** to return. Drag to rotate, scroll or pinch to zoom, or use the 3D toolbar to pan and zoom.
 
 Neural signal animation is slowed 20× for visibility at the default playback speed.
 
