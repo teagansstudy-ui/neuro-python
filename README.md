@@ -8,7 +8,7 @@ NOTE- EDUCATIONAL USE ONLY. NOT MEDICAL ADVICE.
 An interactive 3D brain explorer with three views:
 
 - **Surface** — rotate and zoom a folded cortical surface with gyri and sulci.
-- **Full anatomy** — inspect labeled brain regions, including deep structures, the cerebellum, medulla, and spinal cord. Click or double-click a region marker (or choose it from the list) for its role and examples of associated conditions.
+- **Full anatomy** — inspect labeled brain regions, including deep structures, the cerebellum, medulla, and spinal cord. Click or double-click a region marker (or choose it from the list) to focus and highlight it while retaining its role and condition details. Use **Reset view** to return to the complete anatomy.
 - **Neural signals** — stimulate a Hodgkin–Huxley neuron with a current pulse, follow action potentials along myelinated axons, and observe glutamate release and a graded postsynaptic response. Adjust the stimulus rate and excitatory input to see whether downstream neurons reach the relay threshold.
 
 Neural signal animation is slowed 20× for visibility at the default playback speed.

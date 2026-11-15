@@ -229,8 +229,15 @@ def _add_ellipsoid(
     radii: tuple[float, float, float],
     name: str,
     color: str,
+    region_id: str | None = None,
+    selected_region: str | None = None,
     opacity: float = 0.9,
 ) -> None:
+    is_selected = region_id is not None and region_id == selected_region
+    if selected_region is not None:
+        opacity = 1.0 if is_selected else 0.08
+    if is_selected:
+        radii = tuple(radius * 1.18 for radius in radii)
     u = np.linspace(0, 2 * np.pi, 28)
     v = np.linspace(0, np.pi, 16)
     x = center[0] + radii[0] * np.outer(np.cos(u), np.sin(v))
@@ -259,20 +266,27 @@ def _add_ellipsoid(
             lighting={"ambient": 0.58, "diffuse": 0.72, "specular": 0.2},
             hovertemplate=f"{name} · stylized anatomical model<extra></extra>",
             name=name,
+            meta={"role": "anatomy-structure", "regionId": region_id},
             showlegend=False,
         )
     )
 
 
-def _add_spinal_cord(fig: go.Figure) -> None:
+def _add_spinal_cord(
+    fig: go.Figure,
+    selected_region: str | None = None,
+) -> None:
+    is_selected = selected_region == "spinal-cord"
+    radial_scale = 1.5 if is_selected else 1.0
+    vertical_scale = 1.15 if is_selected else 1.0
     angles = np.linspace(0, 2 * np.pi, 24)
     levels = np.linspace(-90, -51, 24)
     x, y, z = [], [], []
     for level in levels:
         bend = -40 - max(0, -level - 68) * 0.12
-        x.extend(3.2 * np.cos(angles))
-        y.extend(bend + 3.2 * np.sin(angles))
-        z.extend([level] * len(angles))
+        x.extend(3.2 * radial_scale * np.cos(angles))
+        y.extend(bend + 3.2 * radial_scale * np.sin(angles))
+        z.extend([-70 + (level + 70) * vertical_scale] * len(angles))
     i, j, k = [], [], []
     for level in range(len(levels) - 1):
         for angle in range(len(angles)):
@@ -293,22 +307,33 @@ def _add_spinal_cord(fig: go.Figure) -> None:
             j=j,
             k=k,
             color="#d58c9b",
-            opacity=0.9,
+            opacity=1.0 if is_selected else (0.08 if selected_region else 0.9),
             lighting={"ambient": 0.6, "diffuse": 0.7},
             hovertemplate="Spinal cord · stylized anatomical model<extra></extra>",
             name="Spinal cord",
+            meta={"role": "anatomy-structure", "regionId": "spinal-cord"},
             showlegend=False,
         )
     )
 
 
-def _add_full_anatomy(fig: go.Figure) -> None:
+def _add_full_anatomy(
+    fig: go.Figure,
+    selected_region: str | None = None,
+) -> None:
     for center, radii, name, color in (
         ((0, -52, -31), (34, 31, 16), "Cerebellum", "#b993bd"),
         ((0, -31, -30), (10, 12, 10), "Pons", "#d88c9b"),
         ((0, -39, -47), (7.5, 9, 12), "Medulla oblongata", "#d58c9b"),
     ):
-        _add_ellipsoid(fig, center, radii, name, color)
+        region_id = {
+            "Cerebellum": "cerebellum",
+            "Pons": "pons",
+            "Medulla oblongata": "medulla",
+        }[name]
+        _add_ellipsoid(
+            fig, center, radii, name, color, region_id, selected_region
+        )
 
     for name, center, radii, color in (
         ("Basal ganglia", (18, 3, 10), (8, 12, 10), "#d8a85f"),
@@ -317,16 +342,21 @@ def _add_full_anatomy(fig: go.Figure) -> None:
         ("Hippocampus", (25, -22, -12), (5, 15, 5), "#9c90d0"),
         ("Amygdala", (24, -6, -12), (5, 7, 5), "#db8292"),
     ):
-        _add_ellipsoid(fig, center, radii, name, color)
+        region_id = name.lower().replace(" ", "-")
+        _add_ellipsoid(
+            fig, center, radii, name, color, region_id, selected_region
+        )
         _add_ellipsoid(
             fig,
             (-center[0], center[1], center[2]),
             radii,
             name,
             color,
+            region_id,
+            selected_region,
         )
 
-    _add_spinal_cord(fig)
+    _add_spinal_cord(fig, selected_region)
 
 
 def _add_region_markers(fig: go.Figure, selected_region: str | None) -> None:
@@ -336,64 +366,122 @@ def _add_region_markers(fig: go.Figure, selected_region: str | None) -> None:
     )
     ids = [region["id"] for region in REGIONS]
     names = [region["name"] for region in REGIONS]
-    colors = [
-        "#ffd166" if region_id == selected_region else "#71d7cf"
-        for region_id in ids
-    ]
-    sizes = [15 if region_id == selected_region else 10 for region_id in ids]
+    visible_ids = list(range(len(ids))) if selected_region is None else []
     connector_x: list[float | None] = []
     connector_y: list[float | None] = []
     connector_z: list[float | None] = []
-    for marker, label in zip(positions, label_positions):
+    for index in visible_ids:
+        marker, label = positions[index], label_positions[index]
         middle = marker * 0.65 + label * 0.35
         connector_x.extend((marker[0], middle[0], label[0], None))
         connector_y.extend((marker[1], middle[1], label[1], None))
         connector_z.extend((marker[2], middle[2], label[2], None))
-    fig.add_trace(
-        go.Scatter3d(
-            x=connector_x,
-            y=connector_y,
-            z=connector_z,
-            mode="lines",
-            line={"color": "#91a7b7", "width": 1},
-            hoverinfo="skip",
-            name="Region label guides",
-            showlegend=False,
+    if visible_ids:
+        fig.add_trace(
+            go.Scatter3d(
+                x=connector_x,
+                y=connector_y,
+                z=connector_z,
+                mode="lines",
+                line={"color": "#91a7b7", "width": 1},
+                hoverinfo="skip",
+                name="Region label guides",
+                showlegend=False,
+            )
         )
-    )
-    fig.add_trace(
-        go.Scatter3d(
-            x=positions[:, 0],
-            y=positions[:, 1],
-            z=positions[:, 2],
-            mode="markers",
-            customdata=ids,
-            text=names,
-            marker={
-                "size": sizes,
-                "color": colors,
-                "opacity": 1,
-                "line": {"color": "#ffffff", "width": 1},
-            },
-            hovertemplate="<b>%{text}</b><br>Click or double-click to inspect<extra></extra>",
-            meta={"role": "brain-region-markers"},
-            name="Brain regions",
-            showlegend=False,
+        fig.add_trace(
+            go.Scatter3d(
+                x=positions[visible_ids, 0],
+                y=positions[visible_ids, 1],
+                z=positions[visible_ids, 2],
+                mode="markers",
+                customdata=[ids[index] for index in visible_ids],
+                text=[names[index] for index in visible_ids],
+                marker={
+                    "size": 10,
+                    "color": "#71d7cf",
+                    "opacity": 1,
+                    "line": {"color": "#ffffff", "width": 1},
+                },
+                hovertemplate="<b>%{text}</b><br>Click or double-click to inspect<extra></extra>",
+                meta={"role": "brain-region-markers"},
+                name="Brain regions",
+                showlegend=False,
+            )
         )
-    )
-    fig.add_trace(
-        go.Scatter3d(
-            x=label_positions[:, 0],
-            y=label_positions[:, 1],
-            z=label_positions[:, 2],
-            mode="text",
-            text=names,
-            textfont={"color": "#f0f3f6", "size": 10},
-            hoverinfo="skip",
-            name="Brain region labels",
-            showlegend=False,
+        fig.add_trace(
+            go.Scatter3d(
+                x=label_positions[visible_ids, 0],
+                y=label_positions[visible_ids, 1],
+                z=label_positions[visible_ids, 2],
+                mode="text",
+                text=[names[index] for index in visible_ids],
+                textfont={"color": "#f0f3f6", "size": 10},
+                hoverinfo="skip",
+                name="Brain region labels",
+                showlegend=False,
+            )
         )
-    )
+    if selected_region is not None:
+        selected_index = ids.index(selected_region)
+        selected_position = positions[selected_index].copy()
+        ellipsoids = {
+            "cerebellum": ((0, -52, -31), (34, 31, 16)),
+            "pons": ((0, -31, -30), (10, 12, 10)),
+            "medulla": ((0, -39, -47), (7.5, 9, 12)),
+            "basal-ganglia": ((18, 3, 10), (8, 12, 10)),
+            "thalamus": ((11, -17, 9), (7, 10, 9)),
+            "hypothalamus": ((8, -4, -8), (5, 7, 5)),
+            "hippocampus": ((25, -22, -12), (5, 15, 5)),
+            "amygdala": ((24, -6, -12), (5, 7, 5)),
+        }
+        view_direction = np.asarray([1.7, 1.45, 1.05])
+        view_direction /= np.linalg.norm(view_direction)
+        if selected_region == "spinal-cord":
+            selected_position[0] += 7
+        elif selected_region in ellipsoids:
+            center, radii = ellipsoids[selected_region]
+            scaled_radii = np.asarray(radii) * 1.18
+            surface_distance = 1 / np.sqrt(
+                np.sum((view_direction / scaled_radii) ** 2)
+            )
+            selected_position = (
+                np.asarray(center) + view_direction * surface_distance * 1.24
+            )
+        label_position = selected_position + view_direction * 8
+        fig.add_trace(
+            go.Scatter3d(
+                x=[selected_position[0]],
+                y=[selected_position[1]],
+                z=[selected_position[2]],
+                mode="markers",
+                customdata=[selected_region],
+                text=[names[selected_index]],
+                marker={
+                    "size": 25,
+                    "color": "#ffd166",
+                    "opacity": 1,
+                    "line": {"color": "#ffffff", "width": 3},
+                },
+                hovertemplate="<b>%{text}</b><br>Selected region<extra></extra>",
+                meta={"role": "brain-region-markers"},
+                name="Selected brain region",
+                showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter3d(
+                x=[label_position[0]],
+                y=[label_position[1]],
+                z=[label_position[2]],
+                mode="text",
+                text=[names[selected_index]],
+                textfont={"color": "#ffffff", "size": 16},
+                hoverinfo="skip",
+                name="Selected region label",
+                showlegend=False,
+            )
+        )
 
 
 def simulate_hodgkin_huxley(stimulus_current: float) -> dict[str, object]:
@@ -796,6 +884,15 @@ def build_figure(
     sulcal_values = np.concatenate([hemisphere[2] for hemisphere in surfaces])
     color_min, color_max = np.percentile(sulcal_values, [2, 98])
     fig = go.Figure()
+    surface_opacity = (
+        1
+        if mode == "Surface"
+        else 0.015
+        if mode == "Full anatomy" and selected_region
+        else 0.36
+        if mode == "Full anatomy"
+        else 0.13
+    )
 
     for coords, faces, sulc in surfaces:
         fig.add_trace(
@@ -812,7 +909,7 @@ def build_figure(
                 cmin=color_min,
                 cmax=color_max,
                 showscale=False,
-                opacity=1 if mode == "Surface" else (0.36 if mode == "Full anatomy" else 0.13),
+                opacity=surface_opacity,
                 flatshading=False,
                 lighting={
                     "ambient": 0.48,
@@ -829,7 +926,10 @@ def build_figure(
         )
 
     if mode != "Surface":
-        _add_full_anatomy(fig)
+        _add_full_anatomy(
+            fig,
+            selected_region if mode == "Full anatomy" else None,
+        )
     if mode == "Full anatomy":
         _add_region_markers(fig, selected_region)
     if mode == "Neural signals":
@@ -867,6 +967,38 @@ def build_figure(
     return fig
 
 
+def _region_camera(selected_region: str | None) -> dict | None:
+    if selected_region is None:
+        return None
+    region = next(region for region in REGIONS if region["id"] == selected_region)
+    radii = {
+        "frontal": (22, 22, 22),
+        "parietal": (20, 20, 20),
+        "temporal": (20, 20, 20),
+        "occipital": (20, 20, 20),
+        "insula": (18, 18, 18),
+        "hippocampus": (16, 20, 16),
+        "amygdala": (14, 14, 14),
+        "basal-ganglia": (16, 20, 16),
+        "thalamus": (14, 18, 16),
+        "hypothalamus": (14, 16, 14),
+        "cerebellum": (40, 38, 22),
+        "pons": (20, 18, 16),
+        "medulla": (18, 16, 18),
+        "spinal-cord": (18, 14, 26),
+    }[selected_region]
+    center = np.asarray(region["position"])
+    return {
+        "eye": {"x": 1.7, "y": 1.45, "z": 1.05},
+        "center": {"x": 0, "y": 0, "z": 0},
+        "up": {"x": 0, "y": 0, "z": 1},
+        "ranges": {
+            axis: [float(center[index] - radius), float(center[index] + radius)]
+            for index, (axis, radius) in enumerate(zip(("x", "y", "z"), radii))
+        },
+    }
+
+
 def _show_region_details(region: dict) -> None:
     st.markdown(f"### {region['name']}")
     st.write(region["description"])
@@ -878,6 +1010,11 @@ def _show_region_details(region: dict) -> None:
         "Many neurological conditions affect multiple regions; a dot does not "
         "mean a condition is limited to that structure."
     )
+
+
+def _reset_anatomy_view() -> None:
+    st.session_state["selected_brain_region"] = None
+    st.session_state["region_picker"] = "Choose a region…"
 
 
 def main() -> None:
@@ -923,6 +1060,12 @@ def main() -> None:
             st.write(
                 "Click or double-click a turquoise dot on the model to see the region's "
                 "function and example associated conditions."
+            )
+            st.button(
+                "Reset view",
+                key="reset_anatomy_view",
+                use_container_width=True,
+                on_click=_reset_anatomy_view,
             )
             chosen_name = st.selectbox(
                 "Or select a region",
@@ -1018,6 +1161,13 @@ def main() -> None:
         inputAmplitude=excitatory_input_mv if mode == "Neural signals" else 0,
         speed=playback_speed if mode == "Neural signals" else 1.0,
         selectedRegion=selected_region_id,
+        selectedRegionName=selected_region["name"] if selected_region else None,
+        viewMode=mode,
+        regionCamera=(
+            _region_camera(selected_region_id)
+            if mode == "Full anatomy"
+            else None
+        ),
         key="brain_model",
         default=None,
         height=740,

@@ -33,14 +33,105 @@
       let lastClick = null;
       let clickTimer = null;
       let animationFrame = null;
+      let cameraAnimationFrame = null;
+      let cameraAnimationId = 0;
+      let defaultSceneRanges = null;
       let animationStart = performance.now();
       let pendingRegion = null;
+      let lastSelectedRegion = null;
+      let lastViewMode = null;
+      const defaultCamera = {
+        eye: { x: 1.7, y: 1.45, z: 1.05 },
+        center: { x: 0, y: 0, z: 0 },
+        up: { x: 0, y: 0, z: 1 },
+      };
 
       function send(type, extra = {}) {
         window.parent.postMessage(
           { isStreamlitMessage: true, type, ...extra },
           "*"
         );
+      }
+
+      function animateCamera(camera, message, targetRanges) {
+        const animationId = ++cameraAnimationId;
+        if (cameraAnimationFrame) {
+          cancelAnimationFrame(cameraAnimationFrame);
+          cameraAnimationFrame = null;
+        }
+        const scene = plot._fullLayout && plot._fullLayout.scene;
+        const initialCamera = scene && scene.camera
+          ? {
+              eye: { ...scene.camera.eye },
+              center: { ...scene.camera.center },
+              up: { ...scene.camera.up },
+            }
+          : defaultCamera;
+        const initialRanges = scene
+          ? {
+              x: scene.xaxis.range.slice(),
+              y: scene.yaxis.range.slice(),
+              z: scene.zaxis.range.slice(),
+            }
+          : defaultSceneRanges;
+        const finalRanges = targetRanges || defaultSceneRanges;
+        const start = performance.now();
+
+        function interpolate(source, target, progress) {
+          return {
+            x: source.x + (target.x - source.x) * progress,
+            y: source.y + (target.y - source.y) * progress,
+            z: source.z + (target.z - source.z) * progress,
+          };
+        }
+
+        function interpolateRange(source, target, progress) {
+          return source.map(
+            (value, index) => value + (target[index] - value) * progress
+          );
+        }
+
+        function step(now) {
+          const progress = Math.min(1, (now - start) / 850);
+          const eased = progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+          const nextCamera = {
+            eye: interpolate(initialCamera.eye, camera.eye, eased),
+            center: interpolate(initialCamera.center, camera.center, eased),
+            up: interpolate(initialCamera.up, camera.up, eased),
+          };
+          const nextRanges = finalRanges
+            ? {
+                x: interpolateRange(initialRanges.x, finalRanges.x, eased),
+                y: interpolateRange(initialRanges.y, finalRanges.y, eased),
+                z: interpolateRange(initialRanges.z, finalRanges.z, eased),
+              }
+            : null;
+          const layoutUpdate = { "scene.camera": nextCamera };
+          if (nextRanges) {
+            layoutUpdate["scene.xaxis.range"] = nextRanges.x;
+            layoutUpdate["scene.yaxis.range"] = nextRanges.y;
+            layoutUpdate["scene.zaxis.range"] = nextRanges.z;
+          }
+          Plotly.relayout(plot, layoutUpdate)
+            .then(() => {
+              if (animationId !== cameraAnimationId) return;
+              if (progress < 1) {
+                cameraAnimationFrame = requestAnimationFrame(step);
+              } else {
+                cameraAnimationFrame = null;
+                status.textContent = message;
+              }
+            })
+            .catch((error) => {
+              if (animationId !== cameraAnimationId) return;
+              cameraAnimationFrame = null;
+              status.textContent = "The anatomy camera could not be updated.";
+              console.error("Could not animate the anatomy camera.", error);
+            });
+        }
+        cameraAnimationFrame = requestAnimationFrame(step);
       }
 
       function animateSignals(figure, args) {
@@ -263,15 +354,53 @@
         };
         Plotly.react(plot, figure.data, figure.layout, config)
           .then(() => {
-            status.textContent = args.animate
-              ? args.spiking
-                ? `Hodgkin–Huxley action potentials · ${args.firingRate} Hz · ${args.relay ? "postsynaptic relay" : "subthreshold EPSP"}`
-                : "Subthreshold stimulus · no action potential to propagate"
-              : figure.data.some((trace) =>
-                  trace.meta && trace.meta.role === "brain-region-markers"
-                )
-                ? "Click or double-click a labeled dot to inspect that region"
-                : "Drag to rotate · scroll to zoom";
+            const modeChanged = args.viewMode !== lastViewMode;
+            const selectionChanged =
+              args.selectedRegion !== lastSelectedRegion;
+            const scene = plot._fullLayout && plot._fullLayout.scene;
+            if (!defaultSceneRanges && scene) {
+              defaultSceneRanges = {
+                x: scene.xaxis.range.slice(),
+                y: scene.yaxis.range.slice(),
+                z: scene.zaxis.range.slice(),
+              };
+            }
+            if (
+              args.viewMode === "Full anatomy" &&
+              args.selectedRegion &&
+              (modeChanged || selectionChanged) &&
+              args.regionCamera
+            ) {
+              animateCamera(
+                args.regionCamera,
+                `Focused on ${args.selectedRegionName} · drag to rotate`,
+                args.regionCamera.ranges
+              );
+            } else if (
+              args.viewMode === "Full anatomy" &&
+              !args.selectedRegion &&
+              selectionChanged
+            ) {
+              animateCamera(
+                defaultCamera,
+                "Full anatomy view",
+                defaultSceneRanges
+              );
+            }
+            lastSelectedRegion = args.selectedRegion;
+            lastViewMode = args.viewMode;
+            status.textContent =
+              args.viewMode === "Full anatomy" && args.selectedRegion
+                ? `Focused on ${args.selectedRegionName} · drag to rotate`
+                : args.animate
+                  ? args.spiking
+                    ? `Hodgkin–Huxley action potentials · ${args.firingRate} Hz · ${args.relay ? "postsynaptic relay" : "subthreshold EPSP"}`
+                    : "Subthreshold stimulus · no action potential to propagate"
+                  : figure.data.some((trace) =>
+                      trace.meta && trace.meta.role === "brain-region-markers"
+                    )
+                    ? "Click or double-click a labeled dot to inspect that region"
+                    : "Drag to rotate · scroll to zoom";
             if (!plot.dataset.handlersAttached) {
               plot.on("plotly_click", onPlotClick);
               plot.dataset.handlersAttached = "true";
