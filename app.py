@@ -1088,9 +1088,9 @@ def render_footer():
 - Neuron model: Hodgkin & Huxley (1952), *J Physiol* 117:500-544
 - Built with Streamlit, nilearn and Plotly
 
-**Made by Teagan**
-Feedback welcome: add your email or LinkedIn here
-"""
+**Made by Teagan🤘🏼**
+
+Feedback: [LinkedIn](https://www.linkedin.com/in/teagan-sharma-a8ba77399) · [GitHub Issues](https://github.com/teagansstudy-ui/neuro-python/issues)
     )
 
 
